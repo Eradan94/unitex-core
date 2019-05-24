@@ -893,13 +893,11 @@ public:
 
       //the multidelaf mod is only generated when the user checks the split mod		
       if ((automateMode == TRANMODE) && outBufferCnt && generateDictionary == true) {
-      	//Split outputs mod
-        //u_fprintf(foutput, "INPUT :");
     	  u_fputs(INPUTBUFFER, foutput);
-		    //u_fprintf(foutput, "\n");
-		    //u_fprintf(foutput, "OUTPUT :");
     	  u_fputs(OUTPUTBUFFER, foutput);
-		    u_fprintf(foutput, "\n");
+		  u_fprintf(foutput, "\n");
+
+		  //TODO : multidelaf to delaf
       }
       if (display_control == FST2LIST_DEBUG) {
         printPathNames(foutput);
