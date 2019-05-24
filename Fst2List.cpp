@@ -21,6 +21,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <map>
 
 #include <locale.h>
 #include "Unicode.h"
@@ -766,6 +767,13 @@ public:
     return 0;
   }
 
+  struct configMap {
+  	//Represents the configFile's tags 
+  	unichar key[128]; //key is a lexical mask
+  	int matches;
+  	unichar value[128]; // value is the rest of the line
+  };
+
   unichar inputBuffer[128];
   unichar outputBuffer[128];
   int inputPtrCnt;            // input pointer counter
@@ -774,6 +782,7 @@ public:
   unichar OUTPUTBUFFER[4096]; // buffer used to print the box outputs
   int inBufferCnt;            // buffer counter for box inputs
   int outBufferCnt;           // buffer counter for box outputs
+  configMap map[128];
 
   void resetBufferCounters() {
      inputPtrCnt = outputPtrCnt = inBufferCnt = outBufferCnt = 0;
@@ -791,6 +800,46 @@ public:
 	    wordPtr++;
 	  }
     }
+  }
+
+  /**
+  * Reads the content of the config file and fills the map
+  */
+  void readConfigFile() {
+  	unichar text[1024];
+  	int i, j, taille;
+  	int k = 0;
+  	u_printf("configFile : \n", text);
+  	while(u_fgets(text, 1024, configFile) != EOF) {
+  		i = j = 0;
+  		taille = u_strlen(text);
+  		char c = text[i];
+  		if(c == '<') {
+  			//tag
+  			while(c != '>' && i <= taille) {
+  				c = text[i++];
+  				map[k].key[j++] = c;  				
+  			}
+  			map[k].key[j++] = '\0';
+  			k++;
+  			c = text[i+=1];
+  			if(text[i] == '{') {
+  				map[k].matches = text[i+=1] - '0';
+  			}
+  			c = text[i+=3];
+  			j = 0;
+  			while(c != '\0') {
+  				c = text[i++];
+  				map[k].value[j++] = c; 
+  			}
+  			map[k].value[j++] = '\0';
+  			/*u_printf(" k : %d, key : ", k);
+  			u_fputs(map[k].key, U_STDOUT);
+  			u_printf(", matches : %d, value : ", map[k].matches);
+  			u_fputs(map[k].value, U_STDOUT);
+  			u_printf("\n");*/
+  		} 		
+  	}
   }
 
   /**
@@ -898,6 +947,7 @@ public:
 		  u_fprintf(foutput, "\n");
 
 		  //TODO : multidelaf to delaf
+		  //transcodeMultidelaf2Delaf();
       }
       if (display_control == FST2LIST_DEBUG) {
         printPathNames(foutput);
@@ -2410,7 +2460,7 @@ int main_Fst2List(int argc, char* const argv[]) {
       configfilename = new char[strlen((char*)&options.vars()->optarg[0]) + 1];
       strcpy(configfilename, (char*) &options.vars()->optarg[0]);
       aa.configFile = u_fopen(&vec, configfilename, U_READ);
-      //u_printf("configfilename : %s \n", configfilename);     
+      aa.readConfigFile();   
       if (!aa.configFile) {
       	fatal_error("Cannot open file %s\n", configfilename);
       }	
