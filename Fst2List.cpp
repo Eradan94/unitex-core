@@ -21,7 +21,6 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <map>
 
 #include <locale.h>
 #include "Unicode.h"
@@ -767,11 +766,22 @@ public:
     return 0;
   }
 
-  struct configMap {
+  struct ConfigMap {
   	//Represents the configFile's tags 
-  	unichar key[128]; //key is a lexical mask
-  	int matches;
-  	unichar value[128]; // value is the rest of the line
+  	unichar lexical_mask[128];
+  	int matches; // number of matches for the lexical mask (optionnal)
+  	unichar operations[128][128]; // operations to apply
+  };
+
+  struct MultiDelafMap {
+  	//Represents a multidelaf string
+  	unichar inflect_word[512];
+  	unichar canonical_word[512];
+  	unichar lexical_mask[32][32];
+ 	unichar lemma[32][32];
+ 	unichar part_of_speech[32][32];
+ 	unichar codes[32][32];
+ 	unichar features[32][32];
   };
 
   unichar inputBuffer[128];
@@ -782,7 +792,8 @@ public:
   unichar OUTPUTBUFFER[4096]; // buffer used to print the box outputs
   int inBufferCnt;            // buffer counter for box inputs
   int outBufferCnt;           // buffer counter for box outputs
-  configMap map[128];
+  ConfigMap map[128];
+  MultiDelafMap multidelaf;
 
   void resetBufferCounters() {
      inputPtrCnt = outputPtrCnt = inBufferCnt = outBufferCnt = 0;
@@ -803,43 +814,81 @@ public:
   }
 
   /**
+  * Parse the operations string to construct an array of operations
+  */
+  void parseOps(unichar* ops, int l) {
+  	int i = 0, j = 0, k = 0;
+  	char c;
+  	char last;
+  	while(ops[i] != '\0') {  		
+  		last = c;
+  		c = ops[i];
+  		if((c == ',' || c == '+' || c == ':' || c == '.') && last != c && i != 0)  {
+  			map[l].operations[k][j] = '\0';
+  			k++;  				
+  			j = 0;
+  		}
+  		map[l].operations[k][j++] = c;
+  		i++;
+  	}
+  }
+
+  /**
   * Reads the content of the config file and fills the map
   */
   void readConfigFile() {
   	unichar text[1024];
+  	unichar ops[128];
   	int i, j, taille;
   	int k = 0;
-  	u_printf("configFile : \n", text);
   	while(u_fgets(text, 1024, configFile) != EOF) {
   		i = j = 0;
   		taille = u_strlen(text);
   		char c = text[i];
   		if(c == '<') {
-  			//tag
   			while(c != '>' && i <= taille) {
   				c = text[i++];
-  				map[k].key[j++] = c;  				
+  				map[k].lexical_mask[j++] = c;  				
   			}
-  			map[k].key[j++] = '\0';
-  			k++;
+  			map[k].lexical_mask[j++] = '\0';
+  			
   			c = text[i+=1];
   			if(text[i] == '{') {
   				map[k].matches = text[i+=1] - '0';
+  				c = text[i += 3];
   			}
-  			c = text[i+=3];
   			j = 0;
   			while(c != '\0') {
   				c = text[i++];
-  				map[k].value[j++] = c; 
-  			}
-  			map[k].value[j++] = '\0';
-  			/*u_printf(" k : %d, key : ", k);
-  			u_fputs(map[k].key, U_STDOUT);
-  			u_printf(", matches : %d, value : ", map[k].matches);
-  			u_fputs(map[k].value, U_STDOUT);
-  			u_printf("\n");*/
+  				ops[j++] = c; 
+  			} 
+  			ops[j++] = '\0'; 			
+  			/*u_printf("k : %d, key : ", k);
+  			u_fputs(map[k].lexical_mask, U_STDOUT);
+  			u_printf(", matches : %d \n", map[k].matches); */
+  			parseOps(ops, k); 
+  			k++;			
   		} 		
   	}
+  }
+
+  /**
+  * Parses the multidelaf string into a map to create the final delaf string
+  */
+  void multiDelaf2Map() {
+  	int size;
+  	int i = 0;
+  	unichar* res;
+  	size = u_strlen(OUTPUTBUFFER) + u_strlen(INPUTBUFFER);
+  	u_fprintf(foutput, "size : %d\n", size);
+
+  	while() {
+  		
+  	}
+
+   
+    
+  
   }
 
   /**
@@ -947,7 +996,7 @@ public:
 		  u_fprintf(foutput, "\n");
 
 		  //TODO : multidelaf to delaf
-		  //transcodeMultidelaf2Delaf();
+		  multiDelaf2Map();
       }
       if (display_control == FST2LIST_DEBUG) {
         printPathNames(foutput);
