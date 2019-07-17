@@ -33,6 +33,7 @@
 #include "Transitions.h"
 #include "UnitexGetOpt.h"
 
+#include "TransductionStackTfst.h"
 #include "LocatePattern.h"
 #include "MorphologicalLocate.h"
 #include "Korean.h"
@@ -284,6 +285,7 @@ public:
   bool inMorphoMode = false;  // true if the current state is in morphological mode
   bool isKorean = false;
   struct locate_parameters* p;
+  struct locate_tfst_infos* tfst_infos;
   int morphDicCnt;  // number of dic to explore when a lexical mask is encoutered
   bool mode_morph;  // true if the current state is in morphological mode
   bool isWord;  // false if the state's content is not a word (like $< or $>)
@@ -815,6 +817,8 @@ public:
   int outBufferCnt;           // buffer counter for box outputs
   Alphabet *alphabet;
   Korean *korean;
+
+  OutputVariables *input_variables;
 
   ProcessedLexicalMask *processedLexicalMasks;
   int lexicalMaskCnt;
@@ -1745,6 +1749,9 @@ int CFstApp::getWordsFromGraph(int &changeStrToIdx, unichar changeStrTo[][MAX_CH
     fatal_error("Malloc error for processedLexicalMasks in getWordsFromGraph");
   }
 
+  input_variables = new_OutputVariables(a->input_variables, 0, NULL);
+  p->output_variables = new_OutputVariables(a->output_variables, 0, NULL);
+
   //Checks the automaton's tags to find lexical masks
   check_lexical_masks();
   switch (display_control) {
@@ -2305,6 +2312,8 @@ int CFstApp::outWordsOfGraph(int currentDepth, int depth) {
   inputPtrCnt = outputPtrCnt = 0;
   unichar aaBuffer_for_getLabelNumber[64];
   bool isWord;  // false if the tag content is not a word (like $< or $>)
+  Ustring* stack = new_Ustring(1024);
+
   //  fini = (tagQ[tagQidx - 1] & (SUBGRAPH_PATH_MARK | LOOP_PATH_MARK)) ?
   //    tagQ[tagQidx -1 ]:0;
   //
@@ -2329,15 +2338,42 @@ int CFstApp::outWordsOfGraph(int currentDepth, int depth) {
       Tag = a->tags[pathStack[s].tag & SUB_ID_MASK];
       isWord = false;
       switch (Tag->type) { // check if the current node is a morphological begin or end, and update the boolean to begin/stop the morphological mode
-        case BEGIN_MORPHO_TAG :  
+        case BEGIN_MORPHO_TAG :
           inMorphoMode = true;
           break;
         case END_MORPHO_TAG :
           inMorphoMode = false;
           appendSingleSpace(); // insert one space between the last word of the morphological mode and the next word
           continue;
+        case BEGIN_OUTPUT_VAR_TAG :
+          set_output_variable_pending(p->output_variables, Tag->variable);
+          break;
+        case END_OUTPUT_VAR_TAG :
+          for(unsigned int i = 0; i < p->output_variables->nb_var; i++) {
+            u_fprintf(foutput, "contenu de la variable de sortie : %S -> %S\n", Tag->variable, p->output_variables->variables_[get_value_index(Tag->variable, p->output_variables->variable_index, DONT_INSERT)]);
+          }
+          unset_output_variable_pending(p->output_variables, Tag->variable);
+          break;
+        case BEGIN_VAR_TAG :
+          set_output_variable_pending(input_variables,Tag->variable);
+          break;
+        case END_VAR_TAG :
+          for(unsigned int i = 0; i < input_variables->nb_var; i++) {
+            u_fprintf(foutput, "contenu de la variable de sortie : %S -> %S\n", Tag->variable, input_variables->variables_[get_value_index(Tag->variable,input_variables->variable_index,DONT_INSERT)]);
+          }
+          unset_output_variable_pending(input_variables,Tag->variable);
+          break;
         case UNDEFINED_TAG:
           isWord = true;
+          if(Tag->output != NULL) {
+            process_output_tfst(stack, Tag->output, tfst_infos, 0, input_variables);
+          }
+          if(p->output_variables->pending != NULL) {
+            add_raw_string_to_output_variables(p->output_variables, Tag->output);
+          }
+          if(input_variables->pending != NULL) {
+            add_raw_string_to_output_variables(input_variables, Tag->input);
+          }
           break;
         default :
           break;
@@ -2996,6 +3032,7 @@ int main_Fst2List(int argc, char* const argv[]) {
   aa.vec = vec;
 
   aa.p = new_locate_parameters();
+
   load_morphological_dictionaries(&aa.vec, morpho_dic, aa.p);
   if(makeDic) {
     aa.setGrammarMode(fst2_filename, makeDic);

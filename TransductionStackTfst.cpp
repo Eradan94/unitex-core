@@ -139,7 +139,7 @@ for (;;) {
  * not correctly defined).
  */
 int process_output_tfst(Ustring* stack,const unichar* s,struct locate_tfst_infos* p,
-        int capture_in_debug_mode) {
+        int capture_in_debug_mode, OutputVariables fst2List) {
 int old_length=stack->len;
 int i=0;
 if (s==NULL) {
@@ -444,7 +444,7 @@ if (capture) {
         push_output_string_tfst(stack,output+i);
     }
 }
-if (!process_output_tfst(stack_foo,output,p,capture && p->debug)) {
+if (!process_output_tfst(stack_foo,output,p,capture && p->debug, NULL)) {
     return 0;
 }
 if (capture) {

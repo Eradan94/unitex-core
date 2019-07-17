@@ -24,6 +24,7 @@
 
 #include "Unicode.h"
 #include "TransductionVariables.h"
+#include "OutputTransductionVariables.h"
 #include "Ustring.h"
 #include "LocateTfst_lib.h"
 
@@ -49,6 +50,7 @@ void push_output_char_tfst(Ustring*,unichar);
 void push_output_string_tfst(Ustring*,const unichar*);
 void insert_text_interval_tfst(struct locate_tfst_infos*,Ustring*,int,int,int,int);
 int deal_with_output_tfst(Ustring*,const unichar*,struct locate_tfst_infos*,int*);
+int process_output_tfst(Ustring* stack,const unichar* s,struct locate_tfst_infos* p,int capture_in_debug_mode, OutputVariables*);
 
 } // namespace unitex
 
