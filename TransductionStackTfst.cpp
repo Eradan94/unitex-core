@@ -139,7 +139,7 @@ for (;;) {
  * not correctly defined).
  */
 int process_output_tfst(Ustring* stack,const unichar* s,struct locate_tfst_infos* p,
-        int capture_in_debug_mode, OutputVariables fst2List) {
+        int capture_in_debug_mode, OutputVariables *input_variables) {
 int old_length=stack->len;
 int i=0;
 if (s==NULL) {
@@ -361,6 +361,8 @@ while (s[i]!='\0') {
           /* Not a normal one ? Maybe an output one */
           const Ustring* output=get_output_variable(p->output_variables,name);
           if (output==NULL) {
+            const Ustring* input=get_output_variable(input_variables,name);
+            if(input==NULL) {
               switch (p->variable_error_policy) {
                   case EXIT_ON_VARIABLE_ERRORS: fatal_error("Output error: undefined variable $%S$\n",name);
                   case IGNORE_VARIABLE_ERRORS: continue;
@@ -369,8 +371,12 @@ while (s[i]!='\0') {
                       stack->str[old_length]='\0';
                       return 0;
               }
+            }
+            push_output_string_tfst(stack,input->str);
           }
-          push_output_string_tfst(stack,output->str);
+          else{
+            push_output_string_tfst(stack,output->str);
+          }
           continue;
       }
       if (v->start_in_tokens==UNDEF_VAR_BOUND) {

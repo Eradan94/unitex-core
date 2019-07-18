@@ -34,6 +34,7 @@
 #include "UnitexGetOpt.h"
 
 #include "TransductionStackTfst.h"
+#include "LocateTfst_lib.h"
 #include "LocatePattern.h"
 #include "MorphologicalLocate.h"
 #include "Korean.h"
@@ -285,7 +286,7 @@ public:
   bool inMorphoMode = false;  // true if the current state is in morphological mode
   bool isKorean = false;
   struct locate_parameters* p;
-  struct locate_tfst_infos* tfst_infos;
+  struct locate_tfst_infos tfst_infos;
   int morphDicCnt;  // number of dic to explore when a lexical mask is encoutered
   bool mode_morph;  // true if the current state is in morphological mode
   bool isWord;  // false if the state's content is not a word (like $< or $>)
@@ -847,7 +848,7 @@ public:
    * return 0 when output limit has been reached, else 1
    */
   int outOneWord(unichar *suffix) {
-    int setOut;    
+    int setOut;
     unichar *wordPtr;
     inputBuffer[inputPtrCnt] = outputBuffer[outputPtrCnt] = 0;
     if (!inputPtrCnt && !outputPtrCnt && !suffix) {
@@ -938,7 +939,7 @@ public:
         }
       }
       INPUTBUFFER[inBufferCnt - 1] = 0;
-      OUTPUTBUFFER[outBufferCnt] = 0;   
+      OUTPUTBUFFER[outBufferCnt] = 0;
       if(isKorean) {
         Hanguls_to_Jamos(INPUTBUFFER, jamos, korean, 1);
         convert_jamo_to_hangul(jamos, INPUTBUFFER, korean);
@@ -1017,7 +1018,7 @@ public:
           }
           if (recursiveMode == LABEL) {
             wordPtr = openingQuote;
-            while (*wordPtr) {            	 
+            while (*wordPtr) {
               INPUTBUFFER[inBufferCnt++] = *wordPtr++;
             }
           }
@@ -1750,7 +1751,9 @@ int CFstApp::getWordsFromGraph(int &changeStrToIdx, unichar changeStrTo[][MAX_CH
   }
 
   input_variables = new_OutputVariables(a->input_variables, 0, NULL);
-  p->output_variables = new_OutputVariables(a->output_variables, 0, NULL);
+  tfst_infos.output_variables = new_OutputVariables(a->output_variables, 0, NULL);
+  tfst_infos.input_variables = new_Variables(NULL, 0);
+  tfst_infos.variable_error_policy = EXIT_ON_VARIABLE_ERRORS;
 
   //Checks the automaton's tags to find lexical masks
   check_lexical_masks();
@@ -2311,9 +2314,9 @@ int CFstApp::outWordsOfGraph(int currentDepth, int depth) {
   inBufferCnt = outBufferCnt = 0;
   inputPtrCnt = outputPtrCnt = 0;
   unichar aaBuffer_for_getLabelNumber[64];
-  bool isWord;  // false if the tag content is not a word (like $< or $>)
   Ustring* stack = new_Ustring(1024);
-
+  bool isWord;  // false if the tag content is not a word (like $< or $>)
+  int res;
   //  fini = (tagQ[tagQidx - 1] & (SUBGRAPH_PATH_MARK | LOOP_PATH_MARK)) ?
   //    tagQ[tagQidx -1 ]:0;
   //
@@ -2325,7 +2328,9 @@ int CFstApp::outWordsOfGraph(int currentDepth, int depth) {
   //printPathStack();
 
   for (s = 0; s < pathIdx; s++) {
-
+    res = -1;
+    stack->str[0] = '\0';
+    stack->len=0u;
     inputBuffer[inputPtrCnt] = outputBuffer[outputPtrCnt] = 0;
     if (!pathStack[s].tag) {
       inputBufferPtr = outputBufferPtr = u_null_string;
@@ -2346,33 +2351,30 @@ int CFstApp::outWordsOfGraph(int currentDepth, int depth) {
           appendSingleSpace(); // insert one space between the last word of the morphological mode and the next word
           continue;
         case BEGIN_OUTPUT_VAR_TAG :
-          set_output_variable_pending(p->output_variables, Tag->variable);
+          set_output_variable_pending(tfst_infos.output_variables,Tag->variable);
           break;
         case END_OUTPUT_VAR_TAG :
-          for(unsigned int i = 0; i < p->output_variables->nb_var; i++) {
-            u_fprintf(foutput, "contenu de la variable de sortie : %S -> %S\n", Tag->variable, p->output_variables->variables_[get_value_index(Tag->variable, p->output_variables->variable_index, DONT_INSERT)]);
-          }
-          unset_output_variable_pending(p->output_variables, Tag->variable);
+          /*for(unsigned int i = 0; i < tfst_infos.output_variables->nb_var; i++) {
+            u_fprintf(foutput, "contenu de la variable de sortie : %S -> %S\n", Tag->variable, tfst_infos.output_variables->variables_[get_value_index(Tag->variable,tfst_infos.output_variables->variable_index,DONT_INSERT)]);
+          }*/
+          unset_output_variable_pending(tfst_infos.output_variables,Tag->variable);
           break;
         case BEGIN_VAR_TAG :
           set_output_variable_pending(input_variables,Tag->variable);
           break;
         case END_VAR_TAG :
-          for(unsigned int i = 0; i < input_variables->nb_var; i++) {
+          /*for(unsigned int i = 0; i < input_variables->nb_var; i++) {
             u_fprintf(foutput, "contenu de la variable de sortie : %S -> %S\n", Tag->variable, input_variables->variables_[get_value_index(Tag->variable,input_variables->variable_index,DONT_INSERT)]);
-          }
+          }*/
           unset_output_variable_pending(input_variables,Tag->variable);
           break;
         case UNDEFINED_TAG:
           isWord = true;
-          if(Tag->output != NULL) {
-            process_output_tfst(stack, Tag->output, tfst_infos, 0, input_variables);
-          }
-          if(p->output_variables->pending != NULL) {
-            add_raw_string_to_output_variables(p->output_variables, Tag->output);
+          if(tfst_infos.output_variables->pending != NULL) {
+            res = add_raw_string_to_output_variables(tfst_infos.output_variables, Tag->output);
           }
           if(input_variables->pending != NULL) {
-            add_raw_string_to_output_variables(input_variables, Tag->input);
+            res = add_raw_string_to_output_variables(input_variables, Tag->input);
           }
           break;
         default :
@@ -2387,9 +2389,13 @@ int CFstApp::outWordsOfGraph(int currentDepth, int depth) {
           if(!u_strcmp(Tag->output, "/") && !isMdg) {  // if the output is '/', it's a MDG, this output is not put in the outputfile
             isMdg = true;
           }
+          if(res > 0) {
+            outputBufferPtr = u_null_string;
+          }
           else{
-            outputBufferPtr = (u_strcmp(Tag->output, u_epsilon_string)) ?
-                  Tag->output : u_null_string;
+            process_output_tfst(stack, Tag->output, &tfst_infos, 0, input_variables);
+            outputBufferPtr = (u_strcmp(stack->str, u_epsilon_string)) ?
+                  stack->str : u_null_string;
           }
         } else {
           outputBufferPtr = u_null_string;
