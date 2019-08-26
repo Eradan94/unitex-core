@@ -142,6 +142,7 @@ struct fst2Tag {
     struct pattern* pattern;
     int pattern_number;
     unichar* variable;
+    struct dela_entry* dela_entry;
 
    /*
      * This field represents the list of the numbers of the tokens that this tag
