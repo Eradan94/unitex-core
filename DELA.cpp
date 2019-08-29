@@ -1531,17 +1531,27 @@ s[j]='\0';
  */
 void free_dela_entry(struct dela_entry* d,Abstract_allocator prv_alloc) {
 if (d==NULL) return;
-if (d->inflected!=NULL) free_cb(d->inflected,prv_alloc);
-if (d->lemma!=NULL) free_cb(d->lemma,prv_alloc);
+if (d->inflected!=NULL) {
+  free_cb(d->inflected,prv_alloc);
+  d->inflected = NULL;
+}
+if (d->lemma!=NULL) {
+  free_cb(d->lemma,prv_alloc);
+  d->lemma = NULL;
+}
 for (int i=0;i<d->n_semantic_codes;i++) {
    free_cb(d->semantic_codes[i],prv_alloc);
+   d->semantic_codes[i] = NULL;
+
 }
 for (int i=0;i<d->n_inflectional_codes;i++) {
    free_cb(d->inflectional_codes[i],prv_alloc);
+   d->inflectional_codes[i] = NULL;
 }
 
 for (int i=0;i<d->n_filter_codes;i++) {
    free_cb(d->filter_codes[i],prv_alloc);
+   d->filter_codes[i] = NULL;
 }
 
 
