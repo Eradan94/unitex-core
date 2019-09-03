@@ -1333,7 +1333,7 @@ public:
     * the entries are put in processedLexicalMask at the index corresponding to the lexical mask
   **/
   void extractEntriesFromDic(struct locate_parameters* p, Dictionary* dic, int offset, unichar* inflected, int pos_in_inflected,
-                        int pos_offset, Ustring *line_buffer, Ustring* ustr, struct pattern* pattern, Abstract_allocator allocator, 
+                        int pos_offset, Ustring *line_buffer, Ustring* ustr, struct pattern* pattern, 
                         int index, bool isDic) {
     int final_state, n_transitions, inf_number;
     int z = save_output(ustr);
@@ -1342,24 +1342,27 @@ public:
     struct dela_entry* d = NULL;
     if (final_state) {  // if the current state is final, uncompress the entry to obtain the gramatical label
       inflected[pos_in_inflected] = '\0';
-      /*if(isKorean) {
+      if(isKorean) {
         convert_jamo_to_hangul(inflected, jamos, korean);
-      }*/
-      tmp = dic->inf->codes[inf_number];
-      uncompress_entry(inflected, tmp->string, line_buffer);
-      d = tokenize_DELAF_line_opt(line_buffer->str, NULL); 
-      if((isDic || is_entry_compatible_with_pattern(d, pattern)) && d != NULL) {  // the pattern matches the gramatical label  
-        if(processedLexicalMasks[lexicalMaskCnt].entriesCnt >= processedLexicalMasks[lexicalMaskCnt].maxEntriesCnt) {            
-          dela_entries = (struct dela_entry**)realloc(dela_entries, (sizeof(struct dela_entry*) * processedLexicalMasks[lexicalMaskCnt].maxEntriesCnt * 2));
-          if(dela_entries == NULL) {
-            fatal_error("realloc error for entries in dela_entries");
-          }
-          processedLexicalMasks[lexicalMaskCnt].maxEntriesCnt *= 2;
-        }
-        dela_entries[processedLexicalMasks[lexicalMaskCnt].entriesCnt++] = clone_dela_entry(d, NULL);
       }
-      free_dela_entry(d, NULL);
-      d = NULL;
+      tmp = dic->inf->codes[inf_number];
+      while(tmp != NULL) {
+        uncompress_entry(inflected, tmp->string, line_buffer);
+        d = tokenize_DELAF_line_opt(line_buffer->str, NULL); 
+        if((isDic || is_entry_compatible_with_pattern(d, pattern)) && d != NULL) {  // the pattern matches the gramatical label  
+          if(processedLexicalMasks[lexicalMaskCnt].entriesCnt >= processedLexicalMasks[lexicalMaskCnt].maxEntriesCnt) {            
+            dela_entries = (struct dela_entry**)realloc(dela_entries, (sizeof(struct dela_entry*) * processedLexicalMasks[lexicalMaskCnt].maxEntriesCnt * 2));
+            if(dela_entries == NULL) {
+              fatal_error("realloc error for entries in dela_entries");
+            }
+            processedLexicalMasks[lexicalMaskCnt].maxEntriesCnt *= 2;
+          }
+          dela_entries[processedLexicalMasks[lexicalMaskCnt].entriesCnt++] = clone_dela_entry(d, NULL);
+        }
+        free_dela_entry(d, NULL);
+        d = NULL;
+        tmp = tmp->next;
+      }
     }
     else {
       unichar c;
@@ -1368,7 +1371,7 @@ public:
         update_last_position(p, pos_offset);
         offset = read_dictionary_transition(dic,offset,&c,&adr,ustr);
         inflected[pos_in_inflected] = c;
-        extractEntriesFromDic(p, dic, adr, inflected,pos_in_inflected + 1, pos_offset, line_buffer, ustr, pattern, NULL, index, isDic);
+        extractEntriesFromDic(p, dic, adr, inflected,pos_in_inflected + 1, pos_offset, line_buffer, ustr, pattern, index, isDic);
         restore_output(z,ustr);
       }
     }
@@ -1379,7 +1382,7 @@ public:
     * this subgraph contains two states : the initial state
     * and the state with all the entries found in processLexicalMask's index corresponding to this lexical mask (the last index i.e lexicalMaskCnt)
   **/
-  void createLexicalMaskSubgraph(Abstract_allocator allocator) {
+  void createLexicalMaskSubgraph() {
     a->number_of_graphs += 1;
 
     a->graph_names[a->number_of_graphs] = (unichar*)malloc(sizeof(unichar) * (int)u_strlen(processedLexicalMasks[lexicalMaskCnt].input));
@@ -1410,8 +1413,6 @@ public:
       dela_entries[k - last_number_of_tags] = NULL;
       if(processedLexicalMasks[lexicalMaskCnt].output != NULL) {
         a->tags[i]->output = u_strdup(processedLexicalMasks[lexicalMaskCnt].output);
-        //u_printf("ATT : %S", processedLexicalMasks[lexicalMaskCnt].output);
-        //fatal_error("ok");
       }
       add_transition_to_state(a->states[a->number_of_states - 2], i, a->number_of_states - 1, NULL);
       k--;
@@ -1473,7 +1474,6 @@ public:
   void check_lexical_masks() {
     unichar* inflected = NULL;
     inflected = (unichar*)malloc(sizeof(unichar) * 1024);    
-    //Abstract_allocator allocator = create_abstract_allocator("check_lexical_masks",AllocatorFreeOnlyAtAllocatorDelete|AllocatorTipGrowingOftenRecycledObject,0);
     struct pattern* pattern = NULL;
     unichar *lexical_mask = NULL;
     unichar *var_dic_name = NULL;
@@ -1521,12 +1521,9 @@ public:
               processedLexicalMasks[lexicalMaskCnt].output = u_strdup(a->tags[t->tag_number]->output);
               if(a->tags[t->tag_number]->output[0] == (unichar)'$' && a->tags[t->tag_number]->output[u_strlen(a->tags[t->tag_number]->output) - 1] == (unichar)'$') {
                 //There is a variable in the lexical mask
-                //TODO
                 var_dic_name = u_strdup(a->tags[t->tag_number]->output);
                 var_dic_name[u_strlen(var_dic_name) -1] = '\0';
                 var_dic_name++;
-                //u_printf("var : %S", var_dic_name);
-                //fatal_error("hein");
                 set_dic_variable(var_dic_name, NULL, &(tfst_infos.dic_variables), 0);
                 //free(var_dic_name);
                 //var_dic_name = NULL;
@@ -1541,22 +1538,22 @@ public:
             for(int i = 0; i < morphDicCnt; i++) {
               // extract all the entries matching the lexical_mask
               extractEntriesFromDic(p, p->morpho_dic[i], p->morpho_dic[i]->initial_state_offset, inflected, 0, 0,
-                                      new_Ustring(), new_Ustring(), pattern, NULL, lexicalMaskCnt, isDic);
+                                      new_Ustring(), new_Ustring(), pattern, lexicalMaskCnt, isDic);
             }
             
             if(processedLexicalMasks[lexicalMaskCnt].entriesCnt > 0) {
-              createLexicalMaskSubgraph(NULL);
+              createLexicalMaskSubgraph();
               // modify the tran between the current state (lexical_mask)and the last state
               t->tag_number = SUBGRAPH_PATH_MARK | a->number_of_graphs;
             }
             else {
                t->tag_number = 0;
             }
-            /*free_pattern(pattern, NULL);
+            free_pattern(pattern, NULL);
             pattern = NULL;
             free(dela_entries);
             dela_entries = NULL;
-            lexicalMaskCnt++;*/
+            lexicalMaskCnt++;
           }
           /*free(lexical_mask);
           lexical_mask = NULL;*/
@@ -1564,9 +1561,6 @@ public:
         t = t->next;
       }
     }
-    //close_abstract_allocator(allocator);
-    //free(allocator);
-    //allocator = NULL;
   }
 
 private:
