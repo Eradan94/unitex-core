@@ -142,6 +142,10 @@ struct fst2Tag {
     struct pattern* pattern;
     int pattern_number;
     unichar* variable;
+
+    /*
+    * 
+    */
     struct dela_entry* dela_entry;
 
    /*
