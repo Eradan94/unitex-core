@@ -151,6 +151,7 @@ e->morphological_filter=NULL;
 e->filter_number=-1;
 e->meta=(enum meta_symbol)(-1);
 e->pattern_number=-1;
+e->stop = 0;
 return e;
 }
 

@@ -1476,38 +1476,37 @@ public:
     inflected = (unichar*)malloc(sizeof(unichar) * 1024);    
     struct pattern* pattern = NULL;
     unichar *lexical_mask = NULL;
-    unichar *var_dic_name = NULL;
     int n_states = a->number_of_states;
     int count = countLexicalMasks();
     bool isDic = false;
     if(count == 0) {  // no lexical mask in this automaton
       return;
     }
-    reallocFst2(count);
-    for(int j = 0; j < n_states; j++) {
+    reallocFst2(count);  //realloc the automaton according the number of lexical masks
+    for(int j = 0; j < n_states; j++) {  //Check all tags to find lexical masks in the automaton
       Transition *t = a->states[j]->transitions;
       while(t != NULL) {
         // check if the input tag is a lexical mask
         if(!(t->tag_number & SUBGRAPH_PATH_MARK) && (a->tags[t->tag_number]->input[0] == '<'
           && a->tags[t->tag_number]->input[u_strlen(a->tags[t->tag_number]->input) - 1] == '>') && u_strcmp(a->tags[t->tag_number]->input, "<E>")) {
-          if(!u_strcmp(a->tags[t->tag_number]->input, "<DIC>")) {  // Dic case, all the entries from the morphological dictionaries will be extracted
+          if(!u_strcmp(a->tags[t->tag_number]->input, "<DIC>")) {  // DIC case, all the entries from the morphological dictionaries will be extracted
             isDic = true;
           }
-
+          //  copy the lexical mask withtout '$' symbols
           lexical_mask = u_strdup(a->tags[t->tag_number]->input);
           lexical_mask[u_strlen(lexical_mask) -1] = '\0';
           lexical_mask++;
-
           int index = isProcessedLexicalMask(lexical_mask, a->tags[t->tag_number]->output);
           if(index >= 0) {  // the current lexical mask is already processed
             if(processedLexicalMasks[index].entriesCnt == 0) {  // this lexical mask doesn't match any entry in morphological dic
-              t->tag_number = 0;  // in this case, the input is equivalent to an empty box
+              a->tags[t->tag_number]->stop = 1;  //  in this case, the path must be ignored
+              break;
             }
             else {  // the current lexical mask is already processed
-              t->tag_number = SUBGRAPH_PATH_MARK | (a->number_of_graphs - (lexicalMaskCnt - index) + 1);  // the transition references the corresponding subgraph
+              t->tag_number = SUBGRAPH_PATH_MARK | (a->number_of_graphs - (lexicalMaskCnt - index) + 1);  // the transition references the corresponding sub-graph
             }
           }
-          else {
+          else {  // This lexical mask isn't yet processed
             if(lexicalMaskCnt >= maxLexicalMaskCnt) {
               processedLexicalMasks = (ProcessedLexicalMask*)realloc(processedLexicalMasks, sizeof(ProcessedLexicalMask) * maxLexicalMaskCnt * 2);
               if(processedLexicalMasks == NULL)
@@ -1517,17 +1516,9 @@ public:
             processedLexicalMasks[lexicalMaskCnt].input = u_strdup(lexical_mask);
             processedLexicalMasks[lexicalMaskCnt].maxEntriesCnt = 64;
             processedLexicalMasks[lexicalMaskCnt].entriesCnt = 0;
+
             if(a->tags[t->tag_number]->output != NULL) {
               processedLexicalMasks[lexicalMaskCnt].output = u_strdup(a->tags[t->tag_number]->output);
-              if(a->tags[t->tag_number]->output[0] == (unichar)'$' && a->tags[t->tag_number]->output[u_strlen(a->tags[t->tag_number]->output) - 1] == (unichar)'$') {
-                //There is a variable in the lexical mask
-                var_dic_name = u_strdup(a->tags[t->tag_number]->output);
-                var_dic_name[u_strlen(var_dic_name) -1] = '\0';
-                var_dic_name++;
-                set_dic_variable(var_dic_name, NULL, &(tfst_infos.dic_variables), 0);
-                //free(var_dic_name);
-                //var_dic_name = NULL;
-              }
             }
             else {
               processedLexicalMasks[lexicalMaskCnt].output = NULL;
@@ -1536,18 +1527,19 @@ public:
             dela_entries = (struct dela_entry**)malloc(sizeof(struct dela_entry*) * processedLexicalMasks[lexicalMaskCnt].maxEntriesCnt);
             pattern = build_pattern(lexical_mask, NULL, 0, NULL);
             for(int i = 0; i < morphDicCnt; i++) {
-              // extract all the entries matching the lexical_mask
+              // extract all the entries matching the lexical mask
               extractEntriesFromDic(p, p->morpho_dic[i], p->morpho_dic[i]->initial_state_offset, inflected, 0, 0,
                                       new_Ustring(), new_Ustring(), pattern, lexicalMaskCnt, isDic);
             }
             
             if(processedLexicalMasks[lexicalMaskCnt].entriesCnt > 0) {
               createLexicalMaskSubgraph();
-              // modify the tran between the current state (lexical_mask)and the last state
+              // modify the tran between the current state (lexical_mask) and the last state to call the sub-graph
               t->tag_number = SUBGRAPH_PATH_MARK | a->number_of_graphs;
             }
-            else {
-               t->tag_number = 0;
+            else {  //empty sub-graph, this path must be ignored
+              a->tags[t->tag_number]->stop = 1;
+              break;
             }
             free_pattern(pattern, NULL);
             pattern = NULL;
@@ -2330,6 +2322,8 @@ int CFstApp::outWordsOfGraph(int currentDepth, int depth) {
     } else {
       //u_fprintf(foutput, "normal tag in state %d!\n", pathStack[s].stateNo);
       Tag = a->tags[pathStack[s].tag & SUB_ID_MASK];
+      if(Tag->stop)
+        break;
       isWord = false;
       switch (Tag->type) { // check if the current node is a morphological begin or end, and update the boolean to begin/stop the morphological mode
         case BEGIN_MORPHO_TAG :
@@ -2382,7 +2376,9 @@ int CFstApp::outWordsOfGraph(int currentDepth, int depth) {
             outputBufferPtr = u_null_string;
           }
           else{
-            if(Tag->dela_entry != NULL) {  //if the tag contains a dela_entry, put that dela_entry in the dic_var
+            if(Tag->dela_entry != NULL && Tag->output[0] == (unichar)'$' 
+            && Tag->output[u_strlen(Tag->output) - 1] == (unichar)'$') 
+            {  //if the tag contains a dela_entry and if the output contains a variable name, put that dela_entry in the dic_var
               //TODO
               //u_printf("\nTag->output : %S", Tag->output);
               var_dic_name = u_strdup(Tag->output);
