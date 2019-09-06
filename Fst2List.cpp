@@ -287,7 +287,7 @@ public:
   bool isKorean = false;
   struct locate_parameters* p;
   struct locate_tfst_infos tfst_infos;
-  int morphDicCnt;  // number of dic to explore when a lexical mask is encoutered
+  int morphDicCnt = 0;  // number of dic to explore when a lexical mask is encoutered
   bool mode_morph;  // true if the current state is in morphological mode
   bool isWord;  // false if the state's content is not a word (like $< or $>)
   bool isMdg = false;
@@ -1346,7 +1346,7 @@ public:
         convert_jamo_to_hangul(inflected, jamos, korean);
       }
       tmp = dic->inf->codes[inf_number];
-      while(tmp != NULL) {
+      while(tmp != NULL) {  // a word may have several form, each of one of them must be processed
         uncompress_entry(inflected, tmp->string, line_buffer);
         d = tokenize_DELAF_line_opt(line_buffer->str, NULL); 
         if((isDic || is_entry_compatible_with_pattern(d, pattern)) && d != NULL) {  // the pattern matches the gramatical label  
@@ -1357,7 +1357,7 @@ public:
             }
             processedLexicalMasks[lexicalMaskCnt].maxEntriesCnt *= 2;
           }
-          dela_entries[processedLexicalMasks[lexicalMaskCnt].entriesCnt++] = clone_dela_entry(d, NULL);
+          dela_entries[processedLexicalMasks[lexicalMaskCnt].entriesCnt++] = clone_dela_entry(d, NULL);  // add the dela entry into the dela entry list
         }
         free_dela_entry(d, NULL);
         d = NULL;
@@ -1384,12 +1384,12 @@ public:
   **/
   void createLexicalMaskSubgraph() {
     a->number_of_graphs += 1;
-
-    a->graph_names[a->number_of_graphs] = (unichar*)malloc(sizeof(unichar) * (int)u_strlen(processedLexicalMasks[lexicalMaskCnt].input));
+    /*a->graph_names[a->number_of_graphs] = (unichar*)malloc(sizeof(unichar) * (int)u_strlen(processedLexicalMasks[lexicalMaskCnt].input));
     if(a->graph_names[a->number_of_graphs] == NULL) {
       fatal_error("Malloc error for subGraphName in outWordsOfGraph");
-    }
-    u_sprintf(a->graph_names[a->number_of_graphs],"%S", processedLexicalMasks[lexicalMaskCnt].input);
+    }*/
+    a->graph_names[a->number_of_graphs] = u_strdup(processedLexicalMasks[lexicalMaskCnt].input); // TO TEST
+    //u_sprintf(a->graph_names[a->number_of_graphs],"%S", processedLexicalMasks[lexicalMaskCnt].input);
     a->initial_states[a->number_of_graphs] = a->number_of_states;
     a->number_of_states_per_graphs[a->number_of_graphs] = 2;
     a->number_of_states += 2;
@@ -1473,8 +1473,9 @@ public:
   **/
   void check_lexical_masks() {
     unichar* inflected = NULL;
-    inflected = (unichar*)malloc(sizeof(unichar) * 1024);    
+    inflected = (unichar*)malloc(sizeof(unichar) * 4096);    
     struct pattern* pattern = NULL;
+    //unichar *var_dic_name = NULL;
     unichar *lexical_mask = NULL;
     int n_states = a->number_of_states;
     int count = countLexicalMasks();
@@ -1487,6 +1488,10 @@ public:
       Transition *t = a->states[j]->transitions;
       while(t != NULL) {
         // check if the input tag is a lexical mask
+        /*if(a->tags[t->tag_number]->type == BEGIN_MORPHO_TAG)
+          inMorphoMode = true;
+        else if(a->tags[t->tag_number]->type == END_MORPHO_TAG)
+          inMorphoMode = false;*/
         if(!(t->tag_number & SUBGRAPH_PATH_MARK) && (a->tags[t->tag_number]->input[0] == '<'
           && a->tags[t->tag_number]->input[u_strlen(a->tags[t->tag_number]->input) - 1] == '>') && u_strcmp(a->tags[t->tag_number]->input, "<E>")) {
           if(!u_strcmp(a->tags[t->tag_number]->input, "<DIC>")) {  // DIC case, all the entries from the morphological dictionaries will be extracted
@@ -1500,7 +1505,7 @@ public:
           if(index >= 0) {  // the current lexical mask is already processed
             if(processedLexicalMasks[index].entriesCnt == 0) {  // this lexical mask doesn't match any entry in morphological dic
               a->tags[t->tag_number]->stop = 1;  //  in this case, the path must be ignored
-              break;
+              //break;
             }
             else {  // the current lexical mask is already processed
               t->tag_number = SUBGRAPH_PATH_MARK | (a->number_of_graphs - (lexicalMaskCnt - index) + 1);  // the transition references the corresponding sub-graph
@@ -1517,6 +1522,14 @@ public:
             processedLexicalMasks[lexicalMaskCnt].maxEntriesCnt = 64;
             processedLexicalMasks[lexicalMaskCnt].entriesCnt = 0;
 
+            //TO REMOVE
+            /*if(a->tags[t->tag_number]->output[0] == (unichar)'$' && a->tags[t->tag_number]->output[u_strlen(a->tags[t->tag_number]->output) - 1] == (unichar)'$') {
+              var_dic_name = u_strdup(a->tags[t->tag_number]->output);
+              var_dic_name[u_strlen(a->tags[t->tag_number]->output) -1] = '\0';
+              var_dic_name++;
+              set_dic_variable(var_dic_name, NULL, &(tfst_infos.dic_variables), 0);
+            }*/
+
             if(a->tags[t->tag_number]->output != NULL) {
               processedLexicalMasks[lexicalMaskCnt].output = u_strdup(a->tags[t->tag_number]->output);
             }
@@ -1531,7 +1544,6 @@ public:
               extractEntriesFromDic(p, p->morpho_dic[i], p->morpho_dic[i]->initial_state_offset, inflected, 0, 0,
                                       new_Ustring(), new_Ustring(), pattern, lexicalMaskCnt, isDic);
             }
-            
             if(processedLexicalMasks[lexicalMaskCnt].entriesCnt > 0) {
               createLexicalMaskSubgraph();
               // modify the tran between the current state (lexical_mask) and the last state to call the sub-graph
@@ -1539,7 +1551,6 @@ public:
             }
             else {  //empty sub-graph, this path must be ignored
               a->tags[t->tag_number]->stop = 1;
-              break;
             }
             free_pattern(pattern, NULL);
             pattern = NULL;
@@ -1553,6 +1564,9 @@ public:
         t = t->next;
       }
     }
+    free(inflected);
+    inflected = NULL;
+    inMorphoMode = false;
   }
 
 private:
@@ -2322,8 +2336,9 @@ int CFstApp::outWordsOfGraph(int currentDepth, int depth) {
     } else {
       //u_fprintf(foutput, "normal tag in state %d!\n", pathStack[s].stateNo);
       Tag = a->tags[pathStack[s].tag & SUB_ID_MASK];
-      if(Tag->stop)
+      if(Tag->stop) {
         break;
+      }
       isWord = false;
       switch (Tag->type) { // check if the current node is a morphological begin or end, and update the boolean to begin/stop the morphological mode
         case BEGIN_MORPHO_TAG :
@@ -2337,18 +2352,12 @@ int CFstApp::outWordsOfGraph(int currentDepth, int depth) {
           set_output_variable_pending(tfst_infos.output_variables,Tag->variable);
           break;
         case END_OUTPUT_VAR_TAG :
-          /*for(unsigned int i = 0; i < tfst_infos.output_variables->nb_var; i++) {
-            u_fprintf(foutput, "contenu de la variable de sortie : %S -> %S\n", Tag->variable, tfst_infos.output_variables->variables_[get_value_index(Tag->variable,tfst_infos.output_variables->variable_index,DONT_INSERT)]);
-          }*/
           unset_output_variable_pending(tfst_infos.output_variables,Tag->variable);
           break;
         case BEGIN_VAR_TAG :
           set_output_variable_pending(input_variables,Tag->variable);
           break;
         case END_VAR_TAG :
-          /*for(unsigned int i = 0; i < input_variables->nb_var; i++) {
-            u_fprintf(foutput, "contenu de la variable de sortie : %S -> %S\n", Tag->variable, input_variables->variables_[get_value_index(Tag->variable,input_variables->variable_index,DONT_INSERT)]);
-          }*/
           unset_output_variable_pending(input_variables,Tag->variable);
           break;
         case UNDEFINED_TAG:
@@ -2369,30 +2378,34 @@ int CFstApp::outWordsOfGraph(int currentDepth, int depth) {
         inputBufferPtr = (u_strcmp(Tag->input, u_epsilon_string)) ? 
                 Tag->input : u_null_string;
         if (Tag->output != NULL) {
-          if(!u_strcmp(Tag->output, "/") && !isMdg) {  // if the output is '/', it's a MDG, this output is ignored
+          outputBufferPtr = (u_strcmp(Tag->output, u_epsilon_string)) ? Tag->output : u_null_string;
+          if(!u_strcmp(Tag->output, "/") /*&& !isMdg*/) {  // if the output is '/', it's a MDG, this output is ignored
             isMdg = true;
+            outputBufferPtr = u_null_string;
           }
-          if(res > 0) {
+          else if(res > 0) {  // ?
             outputBufferPtr = u_null_string;
           }
           else{
-            if(Tag->dela_entry != NULL && Tag->output[0] == (unichar)'$' 
+            if(Tag->dela_entry != NULL && Tag->output[0] == (unichar)'$'
             && Tag->output[u_strlen(Tag->output) - 1] == (unichar)'$') 
             {  //if the tag contains a dela_entry and if the output contains a variable name, put that dela_entry in the dic_var
-              //TODO
-              //u_printf("\nTag->output : %S", Tag->output);
               var_dic_name = u_strdup(Tag->output);
               var_dic_name[u_strlen(Tag->output) -1] = '\0';
               var_dic_name++;
               set_dic_variable(var_dic_name, Tag->dela_entry, &(tfst_infos.dic_variables), 1);
-              //u_printf("\nOKKK : %S\n", var_dic_name);
-              //fatal_error("hein");
+              outputBufferPtr = Tag->dela_entry->inflected;
               //free(var_dic_name);
             }
             else {  //In the other, check if the output is a input/output variable call in the tag's output
-              process_output_tfst(stack, Tag->output, &tfst_infos, 0, input_variables);
+              //if(Tag->output[0] == '$') {
+                process_output_tfst(stack, Tag->output, &tfst_infos, 0, input_variables);
+              /*}
+              else {
+                process_output_tfst(stack, Tag->output, &tfst_infos, 1, input_variables);
+              }*/
               outputBufferPtr = (u_strcmp(stack->str, u_epsilon_string)) ?
-                  stack->str : u_null_string;
+                  stack->str : u_epsilon_string;
             }
           }
         } else {
@@ -3041,7 +3054,6 @@ int main_Fst2List(int argc, char* const argv[]) {
     aa.setGrammarMode(fst2_filename, makeDic);
   }
   aa.getWordsFromGraph(changeStrToIdx, changeStrTo, fst2_filename);
-
   delete ofilename;
   return SUCCESS_RETURN_CODE;
 }
