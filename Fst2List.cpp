@@ -940,6 +940,8 @@ public:
       u_fprintf(foutput, "\n");
       numberOfOutLine++;
       inBufferCnt = outBufferCnt = 0;
+      empty_non_pending_variables(input_variables);
+      empty_non_pending_variables(tfst_infos.output_variables);
     } else { // suffix == 0
       if (inputPtrCnt || outputPtrCnt) {
         if (prMode == PR_SEPARATION) {
@@ -1487,11 +1489,6 @@ public:
     for(int j = 0; j < n_states; j++) {  //Check all tags to find lexical masks in the automaton
       Transition *t = a->states[j]->transitions;
       while(t != NULL) {
-        // check if the input tag is a lexical mask
-        /*if(a->tags[t->tag_number]->type == BEGIN_MORPHO_TAG)
-          inMorphoMode = true;
-        else if(a->tags[t->tag_number]->type == END_MORPHO_TAG)
-          inMorphoMode = false;*/
         if(!(t->tag_number & SUBGRAPH_PATH_MARK) && (a->tags[t->tag_number]->input[0] == '<'
           && a->tags[t->tag_number]->input[u_strlen(a->tags[t->tag_number]->input) - 1] == '>') && u_strcmp(a->tags[t->tag_number]->input, "<E>")) {
           if(!u_strcmp(a->tags[t->tag_number]->input, "<DIC>")) {  // DIC case, all the entries from the morphological dictionaries will be extracted
@@ -1505,7 +1502,6 @@ public:
           if(index >= 0) {  // the current lexical mask is already processed
             if(processedLexicalMasks[index].entriesCnt == 0) {  // this lexical mask doesn't match any entry in morphological dic
               a->tags[t->tag_number]->stop = 1;  //  in this case, the path must be ignored
-              //break;
             }
             else {  // the current lexical mask is already processed
               t->tag_number = SUBGRAPH_PATH_MARK | (a->number_of_graphs - (lexicalMaskCnt - index) + 1);  // the transition references the corresponding sub-graph
@@ -1521,14 +1517,6 @@ public:
             processedLexicalMasks[lexicalMaskCnt].input = u_strdup(lexical_mask);
             processedLexicalMasks[lexicalMaskCnt].maxEntriesCnt = 64;
             processedLexicalMasks[lexicalMaskCnt].entriesCnt = 0;
-
-            //TO REMOVE
-            /*if(a->tags[t->tag_number]->output[0] == (unichar)'$' && a->tags[t->tag_number]->output[u_strlen(a->tags[t->tag_number]->output) - 1] == (unichar)'$') {
-              var_dic_name = u_strdup(a->tags[t->tag_number]->output);
-              var_dic_name[u_strlen(a->tags[t->tag_number]->output) -1] = '\0';
-              var_dic_name++;
-              set_dic_variable(var_dic_name, NULL, &(tfst_infos.dic_variables), 0);
-            }*/
 
             if(a->tags[t->tag_number]->output != NULL) {
               processedLexicalMasks[lexicalMaskCnt].output = u_strdup(a->tags[t->tag_number]->output);
@@ -2394,16 +2382,16 @@ int CFstApp::outWordsOfGraph(int currentDepth, int depth) {
               var_dic_name[u_strlen(Tag->output) -1] = '\0';
               var_dic_name++;
               set_dic_variable(var_dic_name, Tag->dela_entry, &(tfst_infos.dic_variables), 1);
-              outputBufferPtr = Tag->dela_entry->inflected;
+              if(grammarMode == NONE)
+                outputBufferPtr = Tag->dela_entry->inflected;
+              else if(grammarMode == MERGE) {
+                inputBufferPtr = Tag->dela_entry->inflected;
+                outputBufferPtr = u_null_string;
+              }
               //free(var_dic_name);
             }
             else {  //In the other, check if the output is a input/output variable call in the tag's output
-              //if(Tag->output[0] == '$') {
-                process_output_tfst(stack, Tag->output, &tfst_infos, 0, input_variables);
-              /*}
-              else {
-                process_output_tfst(stack, Tag->output, &tfst_infos, 1, input_variables);
-              }*/
+              process_output_tfst(stack, Tag->output, &tfst_infos, 0, input_variables);
               outputBufferPtr = (u_strcmp(stack->str, u_epsilon_string)) ?
                   stack->str : u_epsilon_string;
             }
