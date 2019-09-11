@@ -33,7 +33,7 @@
 #include "Transitions.h"
 #include "UnitexGetOpt.h"
 
-#include "TransductionStackTfst.h"
+#include "TransductionStack.h"
 #include "LocateTfst_lib.h"
 #include "LocatePattern.h"
 #include "MorphologicalLocate.h"
@@ -286,7 +286,7 @@ public:
   bool inMorphoMode = false;  // true if the current state is in morphological mode
   bool isKorean = false;
   struct locate_parameters* p;
-  struct locate_tfst_infos tfst_infos;
+  //struct locate_tfst_infos tfst_infos;
   int morphDicCnt = 0;  // number of dic to explore when a lexical mask is encoutered
   bool mode_morph;  // true if the current state is in morphological mode
   bool isWord;  // false if the state's content is not a word (like $< or $>)
@@ -800,10 +800,10 @@ public:
   unichar jamos[4096 * 3];    // buffer used for korean
   int inBufferCnt;            // buffer counter for box inputs
   int outBufferCnt;           // buffer counter for box outputs
-  Alphabet *alphabet;
-  Korean *korean;
+  Alphabet *alphabet = NULL;
+  Korean *korean = NULL;
 
-  OutputVariables *input_variables;
+  OutputVariables *input_variables = NULL;
 
   ProcessedLexicalMask *processedLexicalMasks;
   int lexicalMaskCnt = 0;
@@ -941,7 +941,7 @@ public:
       numberOfOutLine++;
       inBufferCnt = outBufferCnt = 0;
       empty_non_pending_variables(input_variables);
-      empty_non_pending_variables(tfst_infos.output_variables);
+      empty_non_pending_variables(p->output_variables);
     } else { // suffix == 0
       if (inputPtrCnt || outputPtrCnt) {
         if (prMode == PR_SEPARATION) {
@@ -1477,7 +1477,6 @@ public:
     unichar* inflected = NULL;
     inflected = (unichar*)malloc(sizeof(unichar) * 4096);    
     struct pattern* pattern = NULL;
-    //unichar *var_dic_name = NULL;
     unichar *lexical_mask = NULL;
     int n_states = a->number_of_states;
     int count = countLexicalMasks();
@@ -1485,8 +1484,8 @@ public:
     if(count == 0) {  // no lexical mask in this automaton
       return;
     }
-    reallocFst2(count);  //realloc the automaton according the number of lexical masks
-    for(int j = 0; j < n_states; j++) {  //Check all tags to find lexical masks in the automaton
+    reallocFst2(count);  // realloc the automaton according the number of lexical masks
+    for(int j = 0; j < n_states; j++) {  // check all tags to find lexical masks in the automaton
       Transition *t = a->states[j]->transitions;
       while(t != NULL) {
         if(!(t->tag_number & SUBGRAPH_PATH_MARK) && (a->tags[t->tag_number]->input[0] == '<'
@@ -1494,20 +1493,20 @@ public:
           if(!u_strcmp(a->tags[t->tag_number]->input, "<DIC>")) {  // DIC case, all the entries from the morphological dictionaries will be extracted
             isDic = true;
           }
-          //  copy the lexical mask withtout '$' symbols
+          // copy the lexical mask withtout '$' symbols
           lexical_mask = u_strdup(a->tags[t->tag_number]->input);
           lexical_mask[u_strlen(lexical_mask) -1] = '\0';
           lexical_mask++;
           int index = isProcessedLexicalMask(lexical_mask, a->tags[t->tag_number]->output);
           if(index >= 0) {  // the current lexical mask is already processed
             if(processedLexicalMasks[index].entriesCnt == 0) {  // this lexical mask doesn't match any entry in morphological dic
-              a->tags[t->tag_number]->stop = 1;  //  in this case, the path must be ignored
+              a->tags[t->tag_number]->stop = 1;  // in this case, the path must be ignored
             }
             else {  // the current lexical mask is already processed
               t->tag_number = SUBGRAPH_PATH_MARK | (a->number_of_graphs - (lexicalMaskCnt - index) + 1);  // the transition references the corresponding sub-graph
             }
           }
-          else {  // This lexical mask isn't yet processed
+          else {  // this lexical mask isn't yet processed
             if(lexicalMaskCnt >= maxLexicalMaskCnt) {
               processedLexicalMasks = (ProcessedLexicalMask*)realloc(processedLexicalMasks, sizeof(ProcessedLexicalMask) * maxLexicalMaskCnt * 2);
               if(processedLexicalMasks == NULL)
@@ -1732,10 +1731,10 @@ int CFstApp::getWordsFromGraph(int &changeStrToIdx, unichar changeStrTo[][MAX_CH
   }
 
   input_variables = new_OutputVariables(a->input_variables, 0, NULL);
-  tfst_infos.output_variables = new_OutputVariables(a->output_variables, 0, NULL);
-  tfst_infos.input_variables = new_Variables(NULL, 0);
-  tfst_infos.dic_variables = NULL;
-  tfst_infos.variable_error_policy = EXIT_ON_VARIABLE_ERRORS;
+  p->output_variables = new_OutputVariables(a->output_variables, 0, NULL);
+  p->input_variables = new_Variables(NULL, 0);
+  p->dic_variables = NULL;
+  p->variable_error_policy = EXIT_ON_VARIABLE_ERRORS;
 
   //Checks the automaton's tags to find lexical masks
   check_lexical_masks();
@@ -2296,7 +2295,7 @@ int CFstApp::outWordsOfGraph(int currentDepth, int depth) {
   inBufferCnt = outBufferCnt = 0;
   inputPtrCnt = outputPtrCnt = 0;
   unichar aaBuffer_for_getLabelNumber[64];
-  Ustring* stack = new_Ustring(1024);
+  //Ustring* stack = new_Ustring(1024);
   unichar *var_dic_name = NULL;
   bool isWord;  // false if the tag content is not a word (like $< or $>)
   int res;
@@ -2312,8 +2311,6 @@ int CFstApp::outWordsOfGraph(int currentDepth, int depth) {
 
   for (s = 0; s < pathIdx; s++) {
     res = -1;
-    stack->str[0] = '\0';
-    stack->len=0u;
     inputBuffer[inputPtrCnt] = outputBuffer[outputPtrCnt] = 0;
     if (!pathStack[s].tag) {
       inputBufferPtr = outputBufferPtr = u_null_string;
@@ -2337,10 +2334,10 @@ int CFstApp::outWordsOfGraph(int currentDepth, int depth) {
           appendSingleSpace(); // insert one space between the last word of the morphological mode and the next word
           continue;
         case BEGIN_OUTPUT_VAR_TAG :
-          set_output_variable_pending(tfst_infos.output_variables,Tag->variable);
+          set_output_variable_pending(p->output_variables,Tag->variable);
           break;
         case END_OUTPUT_VAR_TAG :
-          unset_output_variable_pending(tfst_infos.output_variables,Tag->variable);
+          unset_output_variable_pending(p->output_variables,Tag->variable);
           break;
         case BEGIN_VAR_TAG :
           set_output_variable_pending(input_variables,Tag->variable);
@@ -2350,8 +2347,8 @@ int CFstApp::outWordsOfGraph(int currentDepth, int depth) {
           break;
         case UNDEFINED_TAG:
           isWord = true;
-          if(tfst_infos.output_variables->pending != NULL) {
-            res = add_raw_string_to_output_variables(tfst_infos.output_variables, Tag->output);
+          if(p->output_variables->pending != NULL) {
+            res = add_raw_string_to_output_variables(p->output_variables, Tag->output);
           }
           if(input_variables->pending != NULL) {
             res = add_raw_string_to_output_variables(input_variables, Tag->input);
@@ -2381,19 +2378,27 @@ int CFstApp::outWordsOfGraph(int currentDepth, int depth) {
               var_dic_name = u_strdup(Tag->output);
               var_dic_name[u_strlen(Tag->output) -1] = '\0';
               var_dic_name++;
-              set_dic_variable(var_dic_name, Tag->dela_entry, &(tfst_infos.dic_variables), 1);
+              set_dic_variable(var_dic_name, Tag->dela_entry, &(p->dic_variables), 1);
               if(grammarMode == NONE)
                 outputBufferPtr = Tag->dela_entry->inflected;
               else if(grammarMode == MERGE) {
                 inputBufferPtr = Tag->dela_entry->inflected;
                 outputBufferPtr = u_null_string;
               }
+              else if(grammarMode == REPLACE) {  //UNsure
+                inputBufferPtr = Tag->dela_entry->inflected;
+                outputBufferPtr = u_null_string;
+              }
               //free(var_dic_name);
             }
             else {  //In the other, check if the output is a input/output variable call in the tag's output
-              process_output_tfst(stack, Tag->output, &tfst_infos, 0, input_variables);
-              outputBufferPtr = (u_strcmp(stack->str, u_epsilon_string)) ?
-                  stack->str : u_epsilon_string;
+              if(!process_output(Tag->output, p, p->stack, 0, input_variables)) {  //TODO : input vars
+                break;  // process_output may returns 0 in the case of unsatisfied equations
+              }
+              outputBufferPtr = (u_strcmp(p->stack->stack, u_epsilon_string)) ?
+                  p->stack->stack : u_null_string;
+              p->stack->stack[p->stack->stack_pointer+1]='\0';
+              empty(p->stack);
             }
           }
         } else {
