@@ -1507,7 +1507,6 @@ public:
     }
     free(inflected);
     inflected = NULL;
-    //inMorphoMode = false;
   }
 
 private:
